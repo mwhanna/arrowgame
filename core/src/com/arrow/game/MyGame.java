@@ -15,7 +15,7 @@ import com.badlogic.gdx.utils.TimeUtils;
 import java.util.Iterator;
 
 public class MyGame extends ApplicationAdapter {
-	
+
 	private Texture dropImage;
 	private Texture bucketImage;
 	private OrthographicCamera camera;
@@ -30,12 +30,12 @@ public class MyGame extends ApplicationAdapter {
 		dropImage = new Texture(Gdx.files.internal("droplet.png"));
 		bucketImage = new Texture(Gdx.files.internal("bucket.png"));
 		camera = new OrthographicCamera();
-		camera.setToOrtho(false, 800, 480);
+		camera.setToOrtho(false, 480, 800);
 
 		batch = new SpriteBatch();
 
 		bucket = new Rectangle();
-		bucket.x = 800 / 2 - 64 / 2;
+		bucket.x = 480 / 2 - 64 / 2;
 		bucket.y = 20;
 		bucket.width = 64;
 		bucket.height = 64;
@@ -85,8 +85,8 @@ public class MyGame extends ApplicationAdapter {
 
 	private void spawnRaindrop() {
 		Rectangle raindrop = new Rectangle();
-		raindrop.x = MathUtils.random(0, 800 - 64);
-		raindrop.y = 480;
+		raindrop.x = MathUtils.random(0, 480 - 64);
+		raindrop.y = 800;
 		raindrop.width = 64;
 		raindrop.height = 64;
 		raindrops.add(raindrop);
