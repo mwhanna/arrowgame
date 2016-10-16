@@ -25,7 +25,9 @@ public class MyGame extends ApplicationAdapter {
 	private Vector3 touchPos = new Vector3();
 	private Array<Rectangle> monsters;
 	private Array<Rectangle> arrows;
+	private Array<Rectangle> monstersToRemove;
 	private long lastDropTime;
+	private long lastArrowTime;
 
 	@Override
 	public void create () {
@@ -44,6 +46,8 @@ public class MyGame extends ApplicationAdapter {
 		bow.height = 64;
 
 		monsters = new Array<Rectangle>();
+		arrows = new Array<Rectangle>();
+		monstersToRemove = new Array<Rectangle>();
 		spawnMonster();
 	}
 
@@ -80,19 +84,21 @@ public class MyGame extends ApplicationAdapter {
 				iter.remove();
 			}
 		}
-		if (arrows.size >= 1) {
-			Iterator<Rectangle> arrowIter = arrows.iterator();
-			while (arrowIter.hasNext()) {
-				Rectangle arrow = iter.next();
-				arrow.y += 400 * Gdx.graphics.getDeltaTime();
-				if (arrow.y - 40 > 800) iter.remove();
+		if (arrows.size >= 1 && TimeUtils.nanoTime() - lastArrowTime > 100000000) {
+
+			Iterator<Rectangle> arrowIterator = arrows.iterator();
+			while(arrowIterator.hasNext()) {
+				Rectangle arrow = arrowIterator.next();
+				arrow.y += 300 * Gdx.graphics.getDeltaTime();
+				if (arrow.y + 40 > 800) arrowIterator.remove();
 				for (int i = 0; i < monsters.size; i++) {
 					if (arrow.overlaps(monsters.get(i))) {
-						iter.remove();
-						monsters.removeIndex(i);
+						arrowIterator.remove();
+						monstersToRemove.add(monsters.get(i));
 						break;
 					}
 				}
+				monsters.removeAll(monstersToRemove, true);
 			}
 		}
 	}
@@ -121,5 +127,6 @@ public class MyGame extends ApplicationAdapter {
 		arrow.width = 20;
 		arrow.height = 40;
 		arrows.add(arrow);
+		lastArrowTime = TimeUtils.nanoTime();
 	}
 }
