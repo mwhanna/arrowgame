@@ -1,12 +1,15 @@
 package com.arrow.game;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
+import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.TimeUtils;
@@ -22,14 +25,15 @@ public class GameScreen implements Screen {
     private Texture bowImage;
     private Texture arrowImage;
     private Texture forestImage;
+    private Texture bonus1Image;
     public OrthographicCamera camera;
     private Rectangle bow;
     private Vector3 touchPos = new Vector3();
     private Array<Rectangle> monsters;
-    private Array<Rectangle> arrows;
+    private Array<Arrow> arrows;
     private Array<Rectangle> forests;
     private Array<Rectangle> monstersToRemove;
-    private Array<Rectangle> arrowsToRemove;
+    private Array<Arrow> arrowsToRemove;
     private long lastDropTime;
     private long lastArrowTime;
     private long levelTime;
@@ -38,15 +42,56 @@ public class GameScreen implements Screen {
     private boolean dmg = false;
     private int mazeLevel;
     private boolean nextLevel = false;
+    private int deltax;
+    private int deltay;
+
+    Vector3 tp = new Vector3();
+    boolean dragging;
+    private int downx;
+    private int downy;
+    private boolean bonus1Hit = false;
 
 
     public GameScreen(final MyGame g) {
         this.game = g;
+        Gdx.input.setInputProcessor(new InputAdapter() {
+            @Override public boolean touchDown (int screenX, int screenY, int pointer, int button) {
+                // ignore if its not left mouse button or first touch pointer
+                if (button != Input.Buttons.LEFT || pointer > 0) return false;
+                camera.unproject(tp.set(screenX, screenY, 0));
+                System.out.println("=====TOUCH DOWN ( " + screenX + "," + screenY);
+                downx = screenX / 4;
+                downy = screenY / 4;
+
+                System.out.println("=====TOUCH DOWN ( "+downx+ "," + downy);
+                dragging = true;
+                return true;
+            }
+
+            @Override public boolean touchDragged (int screenX, int screenY, int pointer) {
+                if (!dragging) return false;
+                camera.unproject(tp.set(screenX, screenY, 0));
+                return true;
+            }
+
+            @Override public boolean touchUp (int screenX, int screenY, int pointer, int button) {
+                if (button != Input.Buttons.LEFT || pointer > 0) return false;
+                camera.unproject(tp.set(screenX, screenY, 0));
+                System.out.println("TOUCH UP HAPPENED--------(" + screenX + "," + screenY);
+                int x = screenX / 4;
+                int y = screenY / 4;
+                newArrow(downx, x, downy, y);
+                lastArrowTime = TimeUtils.nanoTime();
+                dragging = false;
+                return true;
+            }
+        });
 
         monsterImage = new Texture(Gdx.files.internal("swordman.png"));
         bowImage = new Texture(Gdx.files.internal("bowman.png"));
         arrowImage = new Texture(Gdx.files.internal("arrow.png"));
         forestImage = new Texture(Gdx.files.internal("forest.png"));
+        bonus1Image = new Texture(Gdx.files.internal("bonus1.png"));
         camera = new OrthographicCamera();
         camera.setToOrtho(false, 480, 800);
 
@@ -60,9 +105,9 @@ public class GameScreen implements Screen {
         newForests();
 
         monsters = new Array<Rectangle>();
-        arrows = new Array<Rectangle>();
+        arrows = new Array<Arrow>();
         monstersToRemove = new Array<Rectangle>();
-        arrowsToRemove = new Array<Rectangle>();
+        arrowsToRemove = new Array<Arrow>();
         exp = 0;
         health = 100;
         mazeLevel = 1;
@@ -111,21 +156,20 @@ public class GameScreen implements Screen {
             for (Rectangle monster : monsters) {
                 game.batch.draw(monsterImage, monster.x, monster.y);
             }
-            for (Rectangle arrow : arrows) {
-                game.batch.draw(arrowImage, arrow.x, arrow.y);
+            for (Arrow arrow : arrows) {
+                arrow.step();
+                Rectangle rect = arrow.getRectangle();
+                if (arrow.getBonus1Hit() && bonus1Hit) {
+                    game.batch.draw(bonus1Image, rect.x, rect.y);
+                    bonus1Hit = false;
+                }
+                else {
+                    game.batch.draw(arrowImage, rect.x, rect.y);
+                }
             }
             game.font.draw(game.batch, "EXP: " + Integer.toString(exp), 380, 700);
             game.font.draw(game.batch, "HEALTH: " + Integer.toString(health), 380, 650);
             game.batch.end();
-
-            if (Gdx.input.isTouched()) {
-                touchPos.set(Gdx.input.getX(), Gdx.input.getY(), 0);
-                camera.unproject(touchPos);
-                //Recovery time between arrows
-                if (TimeUtils.nanoTime() - lastArrowTime > 1000000000) {
-                    spawnArrow(touchPos);
-                }
-            }
 
             if (TimeUtils.nanoTime() - lastDropTime > 1000000000) spawnMonster();
 
@@ -134,7 +178,7 @@ public class GameScreen implements Screen {
                 Rectangle monster = iter.next();
                 //Speed monsters move
                 monster.y -= (100 + (5 * mazeLevel)) * Gdx.graphics.getDeltaTime();
-                if (monster.y + 64 < 0) {
+                if (monster.y - 64 < 0) {
                     iter.remove();
                     health -= 10;
                     if (health <= 0) {
@@ -143,36 +187,24 @@ public class GameScreen implements Screen {
                         dmg = true;
                     }
                 }
-                else {
-                    //Dodge forests
-                    for (Rectangle f : forests) {
-                        if (monster.overlaps(f)) {
-                            if (Math.abs(monster.x - f.x) < Math.abs(monster.x + 64 - f.x) &&
-                                    (monster.x += Math.abs(monster.x - f.x)) < 480) {
-                                monster.x += Math.abs(monster.x - f.x);
-                            }
-                            else {
-                                if ((monster.x -= Math.abs(monster.x + 64 - f.x)) > 0) {
-                                    monster.x -= Math.abs(monster.x + 64 - f.x);
-                                } else {
-                                    monster.x += Math.abs(monster.x - f.x);
-                                }
-                            }
-                        }
-                    }
-                }
             }
-            for (Rectangle arrow : arrows) {
-                //Speed arrows move
-                arrow.y += 300 * Gdx.graphics.getDeltaTime();
-                if (arrow.y + 40 > 800) arrowsToRemove.add(arrow);
+            for (Arrow arrow : arrows) {
+
+                if (arrow.getRectangle().y + 30 > 800) {
+                    arrowsToRemove.add(arrow);
+                    System.out.println("REMOVING ARROW");
+                }
                 for (int i = 0; i < monsters.size; i++) {
                     //Hit a monster
-                    if (arrow.overlaps(monsters.get(i))) {
+                    if (arrow.getRectangle().overlaps(monsters.get(i))) {
                         if (!arrowsToRemove.contains(arrow, false)) {
                             arrowsToRemove.add(arrow);
                         }
                         monstersToRemove.add(monsters.get(i));
+                        if (arrow.getBonus1Hit()) {
+                            bonus1Hit = true;
+                            exp += 100;
+                        }
                         exp += 20 + (10 * mazeLevel - 1);
                         if (exp >= 1000 * mazeLevel) {
                             mazeLevel++;
@@ -183,7 +215,7 @@ public class GameScreen implements Screen {
                     }
                 }
                 for (Rectangle forst : forests) {
-                    if (arrow.overlaps(forst)) {
+                    if (arrow.getRectangle().overlaps(forst)) {
                         arrowsToRemove.add(arrow);
                     }
                 }
@@ -220,6 +252,8 @@ public class GameScreen implements Screen {
         bowImage.dispose();
     }
 
+
+
     private void spawnMonster() {
         Rectangle monster = new Rectangle();
         monster.x = MathUtils.random(0, 480 - 64);
@@ -230,24 +264,25 @@ public class GameScreen implements Screen {
         lastDropTime = TimeUtils.nanoTime();
     }
 
-    private void spawnArrow(Vector3 startPos) {
-        Rectangle arrow = new Rectangle();
-        arrow.x = startPos.x;
-        arrow.y = 0;
-        arrow.width = 10;
-        arrow.height = 40;
-        arrows.add(arrow);
-        lastArrowTime = TimeUtils.nanoTime();
-    }
-
     private void newForests() {
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 6; i++) {
             Rectangle f = new Rectangle();
-            f.x = MathUtils.random(0, 480 - 64);
-            f.y = MathUtils.random(100, 800 - 64);
+            f.x = MathUtils.random(0, 480-64);
+            f.y = MathUtils.random(300, 800 - 64);
             f.width = 64;
             f.height = 64;
             forests.add(f);
         }
+    }
+
+    private void newArrow(int startx, int endx, int starty, int endy) {
+        System.out.println("GOT TO NEW ARROW------------------***");
+
+        Arrow arrow = new Arrow(Math.abs(startx - endx), Math.abs(starty - endy), startx - endx < 0);
+
+//        if (starty - endy > 300) deltay = 300;
+//        if (deltax > 100) deltax = 100;
+
+        arrows.add(arrow);
     }
 }
