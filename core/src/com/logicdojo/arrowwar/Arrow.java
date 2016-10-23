@@ -1,7 +1,9 @@
-package com.arrow.game;
+package com.logicdojo.arrowwar;
 
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.utils.TimeUtils;
+
 import java.util.Random;
 
 /**
@@ -18,11 +20,15 @@ public class Arrow {
     private int width;
     private int height;
     private boolean bonus1Hit;
+    private long timeAlive;
+    private int powerScore;
+    private BonusImage bi;
 
-    public Arrow(int width, int height, boolean leftDir) {
+    public Arrow(int width, int height, boolean leftDir, int bowColor) {
         this.width = width;
         this.height = height;
         this.leftDir = leftDir;
+        this.powerScore = bowColor;
         this.bonus1Hit = false;
 
         Random rand = new Random();
@@ -31,10 +37,9 @@ public class Arrow {
             this.bonus1Hit = true;
         }
 
-        myShape = new Rectangle(240, 0, 10, 30);
+        timeAlive = TimeUtils.millis();
 
-        System.out.println("HEIGHT -- " + height);
-        System.out.println("WIDTH -- " + width);
+        myShape = new Rectangle(240, 0, 10, 30);
     }
 
     public int getUpV() {
@@ -49,32 +54,20 @@ public class Arrow {
     public Rectangle getRectangle() {
         return this.myShape;
     }
-    public void setRectangle(Rectangle r) {
-        myShape = r;
-    }
-    public void setVector(Vector2 v2) {  }
-    public float getX() {
-        return x;
-    }
-    public float getY() {
-        return y;
-    }
-    public void setX(float newX) {
-        this.x = newX;
-    }
-    public void setY(float newY) {
-        this.y = newY;
-    }
-    public int getWidth() {
-        return this.width;
-    }
-    public int Height() {
-        return this.height;
-    }
     public boolean getBonus1Hit() {
         return this.bonus1Hit;
     }
     public void setBonus1Hit(boolean b) { this.bonus1Hit = b; }
+    public long getTimeAlive() {
+        return this.timeAlive;
+    }
+    public void setBonusImage(BonusImage bonus) {
+        this.bi = bonus;
+    }
+    public int getPowerScore() {
+        return this.powerScore;
+    }
+
 
     public void step()
     {

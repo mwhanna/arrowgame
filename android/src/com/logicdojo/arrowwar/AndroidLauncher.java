@@ -1,10 +1,10 @@
-package com.arrow.game;
+package com.logicdojo.arrowwar;
 
 import android.os.Bundle;
 
 import com.badlogic.gdx.backends.android.AndroidApplication;
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration;
-import com.arrow.game.MyGame;
+import com.logicdojo.arrowwar.MyGame;
 
 public class AndroidLauncher extends AndroidApplication {
 	@Override

@@ -1,4 +1,4 @@
-package com.arrow.game;
+package com.logicdojo.arrowwar;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -14,7 +14,9 @@ import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.TimeUtils;
 
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Random;
 
 /**
  * Created by matt on 2016-10-16.
@@ -23,34 +25,46 @@ public class GameScreen implements Screen {
     final MyGame game;
     private Texture monsterImage;
     private Texture bowImage;
+    private Texture bowYellow;
+    private Texture bowOrange;
+    private Texture bowRed;
     private Texture arrowImage;
     private Texture forestImage;
     private Texture bonus1Image;
+    private Texture fireArrowImage;
+    private Texture bombImage;
+    private Texture mushroomCloudImage;
+    private Texture bullseyeImage;
+    private Texture crystalImage;
     public OrthographicCamera camera;
     private Rectangle bow;
     private Vector3 touchPos = new Vector3();
     private Array<Rectangle> monsters;
     private Array<Arrow> arrows;
     private Array<Rectangle> forests;
+    private Array<Rectangle> forestsToRemove;
     private Array<Rectangle> monstersToRemove;
     private Array<Arrow> arrowsToRemove;
+    private Array<BonusImage> bonuses;
+    private Array<BonusImage> bonusesToRemove;
     private long lastDropTime;
     private long lastArrowTime;
     private long levelTime;
+    private long chargeTime;
     private int exp;
     private int health;
     private boolean dmg = false;
     private int mazeLevel;
     private boolean nextLevel = false;
-    private int deltax;
-    private int deltay;
+    private int bowColor;
+    private Random rand = new Random();
+    private int bombCount;
+    private boolean explosion = false;
 
     Vector3 tp = new Vector3();
     boolean dragging;
     private int downx;
     private int downy;
-    private boolean bonus1Hit = false;
-
 
     public GameScreen(final MyGame g) {
         this.game = g;
@@ -59,29 +73,38 @@ public class GameScreen implements Screen {
                 // ignore if its not left mouse button or first touch pointer
                 if (button != Input.Buttons.LEFT || pointer > 0) return false;
                 camera.unproject(tp.set(screenX, screenY, 0));
-                System.out.println("=====TOUCH DOWN ( " + screenX + "," + screenY);
                 downx = screenX / 4;
                 downy = screenY / 4;
-
-                System.out.println("=====TOUCH DOWN ( "+downx+ "," + downy);
                 dragging = true;
+                bowColor = 0;
+                chargeTime = TimeUtils.millis();
                 return true;
             }
 
             @Override public boolean touchDragged (int screenX, int screenY, int pointer) {
                 if (!dragging) return false;
                 camera.unproject(tp.set(screenX, screenY, 0));
+                if (TimeUtils.millis() - chargeTime > 900) {
+                    bowColor = 3;
+                }
+                else if (TimeUtils.millis() - chargeTime > 600) {
+                    bowColor = 2;
+                }
+                else if (TimeUtils.millis() - chargeTime > 300) {
+                    bowColor = 1;
+                }
                 return true;
             }
 
             @Override public boolean touchUp (int screenX, int screenY, int pointer, int button) {
                 if (button != Input.Buttons.LEFT || pointer > 0) return false;
                 camera.unproject(tp.set(screenX, screenY, 0));
-                System.out.println("TOUCH UP HAPPENED--------(" + screenX + "," + screenY);
                 int x = screenX / 4;
                 int y = screenY / 4;
-                newArrow(downx, x, downy, y);
-                lastArrowTime = TimeUtils.nanoTime();
+                if (TimeUtils.millis() - lastArrowTime > 400) {
+                    newArrow(downx, x, downy, y, bowColor);
+                    bowColor = 0;
+                }
                 dragging = false;
                 return true;
             }
@@ -89,11 +112,20 @@ public class GameScreen implements Screen {
 
         monsterImage = new Texture(Gdx.files.internal("swordman.png"));
         bowImage = new Texture(Gdx.files.internal("bowman.png"));
+        bowYellow = new Texture(Gdx.files.internal("bowyellow.png"));
+        bowOrange = new Texture(Gdx.files.internal("boworange.png"));
+        bowRed = new Texture(Gdx.files.internal("bowred.png"));
         arrowImage = new Texture(Gdx.files.internal("arrow.png"));
         forestImage = new Texture(Gdx.files.internal("forest.png"));
         bonus1Image = new Texture(Gdx.files.internal("bonus1.png"));
+        fireArrowImage = new Texture(Gdx.files.internal("splinter.png"));
+        bombImage = new Texture(Gdx.files.internal("bolt.png"));
+        mushroomCloudImage = new Texture(Gdx.files.internal("mushroom-cloud.png"));
+        bullseyeImage = new Texture(Gdx.files.internal("bullseye.png"));
+        crystalImage = new Texture(Gdx.files.internal("crytsal.png"));
         camera = new OrthographicCamera();
         camera.setToOrtho(false, 480, 800);
+        bowColor = 0;
 
         bow = new Rectangle();
         bow.x = 480 / 2 - 64 / 2;
@@ -102,14 +134,18 @@ public class GameScreen implements Screen {
         bow.height = 64;
 
         forests = new Array<Rectangle>();
+        forestsToRemove = new Array<Rectangle>();
         newForests();
 
         monsters = new Array<Rectangle>();
         arrows = new Array<Arrow>();
         monstersToRemove = new Array<Rectangle>();
         arrowsToRemove = new Array<Arrow>();
+        bonuses = new Array<BonusImage>();
+        bonusesToRemove = new Array<BonusImage>();
         exp = 0;
         health = 100;
+        bombCount = 3;
         mazeLevel = 1;
         spawnMonster();
     }
@@ -126,6 +162,9 @@ public class GameScreen implements Screen {
             Gdx.gl.glClearColor(0.3f, 0, 0, 1);
             dmg = false;
         }
+        else if (mazeLevel > 3) {
+            Gdx.gl.glClearColor(244, 164, 96, 1);
+        }
         else {
             Gdx.gl.glClearColor(0, 0.5f, 0, 1);
         }
@@ -135,23 +174,48 @@ public class GameScreen implements Screen {
         game.batch.begin();
         //Transition screen between levels
         if (nextLevel) {
-            game.font.draw(game.batch, "Completed Level " + Integer.toString(mazeLevel - 1), 200, 400);
-            game.font.draw(game.batch, "Beginning Level " + Integer.toString(mazeLevel), 200, 300);
+            Gdx.gl.glClearColor(0, 0.8f, 0, 1);
+            game.font.draw(game.batch, "Completed Level " + Integer.toString(mazeLevel - 1), 100, 600);
+            game.font.draw(game.batch, "+ 1 Bomb", 180, 500);
+            game.font.draw(game.batch, "Beginning Level " + Integer.toString(mazeLevel), 100, 300);
             game.batch.end();
             monsters.clear();
             arrows.clear();
             forests.clear();
             newForests();
 
-            if (TimeUtils.nanoTime() - levelTime > 1000000000) {
+            if (TimeUtils.millis() - levelTime > 3000) {
+                bombCount++;
                 nextLevel = false;
             }
         }
         //Normal tick
         else {
-            game.batch.draw(bowImage, bow.x, bow.y);
+            switch (bowColor) {
+                case 0:
+                    game.batch.draw(bowImage, bow.x, bow.y);
+                    break;
+                case 1:
+                    game.batch.draw(bowYellow, bow.x, bow.y);
+                    break;
+                case 2:
+                    game.batch.draw(bowOrange, bow.x, bow.y);
+                    break;
+                case 3:
+                    game.batch.draw(bowRed, bow.x, bow.y);
+                    break;
+                default:
+                    game.batch.draw(bowImage, bow.x, bow.y);
+                    break;
+            }
+
             for (Rectangle forest : forests) {
-                game.batch.draw(forestImage, forest.x, forest.y);
+                if (mazeLevel > 3) {
+                    game.batch.draw(crystalImage, forest.x, forest.y);
+                }
+                else {
+                    game.batch.draw(forestImage, forest.x, forest.y);
+                }
             }
             for (Rectangle monster : monsters) {
                 game.batch.draw(monsterImage, monster.x, monster.y);
@@ -159,16 +223,41 @@ public class GameScreen implements Screen {
             for (Arrow arrow : arrows) {
                 arrow.step();
                 Rectangle rect = arrow.getRectangle();
-                if (arrow.getBonus1Hit() && bonus1Hit) {
-                    game.batch.draw(bonus1Image, rect.x, rect.y);
-                    bonus1Hit = false;
+                if (arrow.getPowerScore() == 3 && bombCount > 0) {
+                    game.batch.draw(bombImage, rect.x, rect.y);
+                }
+                else if (arrow.getPowerScore() == 1 || arrow.getPowerScore() == 2) {
+                    game.batch.draw(fireArrowImage, rect.x, rect.y);
                 }
                 else {
                     game.batch.draw(arrowImage, rect.x, rect.y);
                 }
             }
-            game.font.draw(game.batch, "EXP: " + Integer.toString(exp), 380, 700);
-            game.font.draw(game.batch, "HEALTH: " + Integer.toString(health), 380, 650);
+            for (BonusImage bi : bonuses) {
+                game.batch.draw(bi.getImage(), bi.getRect().x, bi.getRect().y);
+                if (TimeUtils.millis() - bi.getTime() > 1000) {
+                    bonusesToRemove.add(bi);
+                }
+                if (bi.getType() == 2) {
+                    for (Rectangle m : monsters) {
+                        if (bi.getRect().overlaps(m)) {
+                            monstersToRemove.add(m);
+                        }
+                    }
+                    monsters.removeAll(monstersToRemove, false);
+                    for (Rectangle f : forests) {
+                        if (bi.getRect().overlaps(f)) {
+                            forestsToRemove.add(f);
+                        }
+                    }
+                    forests.removeAll(forestsToRemove, false);
+                }
+            }
+            bonuses.removeAll(bonusesToRemove, false);
+
+            game.expFont.draw(game.batch, "EXP: " + Integer.toString(exp), 360, 700);
+            game.expFont.draw(game.batch, "HEALTH: " + Integer.toString(health), 360, 650);
+            game.expFont.draw(game.batch, "BOMBS: " + Integer.toString(bombCount), 360, 600);
             game.batch.end();
 
             if (TimeUtils.nanoTime() - lastDropTime > 1000000000) spawnMonster();
@@ -189,27 +278,47 @@ public class GameScreen implements Screen {
                 }
             }
             for (Arrow arrow : arrows) {
-
-                if (arrow.getRectangle().y + 30 > 800) {
+                if (TimeUtils.millis() - arrow.getTimeAlive() > 1000) {
                     arrowsToRemove.add(arrow);
-                    System.out.println("REMOVING ARROW");
                 }
+
+                if (arrow.getRectangle().y + 64 > 800) {
+                    arrowsToRemove.add(arrow);
+                }
+
                 for (int i = 0; i < monsters.size; i++) {
                     //Hit a monster
                     if (arrow.getRectangle().overlaps(monsters.get(i))) {
                         if (!arrowsToRemove.contains(arrow, false)) {
-                            arrowsToRemove.add(arrow);
+                            if (arrow.getPowerScore() == 1 || arrow.getPowerScore() == 2) {
+                                BonusImage combo = new BonusImage(bullseyeImage, arrow.getRectangle(), 1);
+                                bonuses.add(combo);
+                                exp += 50;
+                            }
+                            else {
+                                arrowsToRemove.add(arrow);
+                            }
                         }
                         monstersToRemove.add(monsters.get(i));
                         if (arrow.getBonus1Hit()) {
-                            bonus1Hit = true;
-                            exp += 100;
+                            int randomNum = rand.nextInt((10 - 1) + 1) + 1;
+                            if (randomNum >= 8) {
+                                BonusImage bi = new BonusImage(bonus1Image, arrow.getRectangle(), 0);
+                                bonuses.add(bi);
+                                exp += 100;
+                            }
+                        }
+                        if (arrow.getPowerScore() == 3) {
+                            BonusImage tempB = new BonusImage(mushroomCloudImage, arrow.getRectangle(), 2);
+                            bombCount--;
+                            bonuses.add(tempB);
+                            explosion = true;
                         }
                         exp += 20 + (10 * mazeLevel - 1);
                         if (exp >= 1000 * mazeLevel) {
                             mazeLevel++;
                             nextLevel = true;
-                            levelTime = TimeUtils.nanoTime();
+                            levelTime = TimeUtils.millis();
                         }
                         break;
                     }
@@ -275,14 +384,10 @@ public class GameScreen implements Screen {
         }
     }
 
-    private void newArrow(int startx, int endx, int starty, int endy) {
-        System.out.println("GOT TO NEW ARROW------------------***");
-
-        Arrow arrow = new Arrow(Math.abs(startx - endx), Math.abs(starty - endy), startx - endx < 0);
-
-//        if (starty - endy > 300) deltay = 300;
-//        if (deltax > 100) deltax = 100;
-
+    private void newArrow(int startx, int endx, int starty, int endy, int bowColor) {
+        Arrow arrow = new Arrow(Math.abs(startx - endx), Math.abs(starty - endy), startx - endx < 0, bowColor);
+        lastArrowTime = TimeUtils.millis();
         arrows.add(arrow);
     }
+
 }
