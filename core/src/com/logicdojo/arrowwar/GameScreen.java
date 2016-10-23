@@ -122,7 +122,7 @@ public class GameScreen implements Screen {
         bombImage = new Texture(Gdx.files.internal("bolt.png"));
         mushroomCloudImage = new Texture(Gdx.files.internal("mushroom-cloud.png"));
         bullseyeImage = new Texture(Gdx.files.internal("bullseye.png"));
-        crystalImage = new Texture(Gdx.files.internal("crytsal.png"));
+        crystalImage = new Texture(Gdx.files.internal("crystal.png"));
         camera = new OrthographicCamera();
         camera.setToOrtho(false, 480, 800);
         bowColor = 0;
